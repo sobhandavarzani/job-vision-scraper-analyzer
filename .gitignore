@@ -19,3 +19,5 @@ chrome/
 # Python Cache
 __pycache__/
 *.pyc
+
+scraper.py
