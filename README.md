@@ -1,7 +1,3 @@
-
----
-
-```markdown
 # 📊 سیستم یکپارچه استخراج و تحلیل آگهی‌های شغلی (Job Market Scraper & Analyzer)
 
 یک اپلیکیشن تحت وب (Web-based) قدرتمند که با استفاده از پایتون و Streamlit ساخته شده است. این ابزار به شما کمک می‌کند تا آگهی‌های شغلی سایت **جاب‌ویژن (JobVision)** را به صورت لحظه‌ای استخراج (Scrape) کرده و با استفاده از هوش مصنوعی و پردازش متن، بازار کار را تحلیل کنید.
@@ -37,8 +33,6 @@
 ```bash
 git clone [https://github.com/YourUsername/job-vision-scraper-analyzer.git](https://github.com/YourUsername/job-vision-scraper-analyzer.git)
 cd job-vision-scraper-analyzer
-
-```
 
 **۲. ساخت و فعال‌سازی محیط مجازی (Virtual Environment):**
 
