@@ -40,11 +40,12 @@
 
 ## 🚀 راهنمای نصب و راه‌اندازی (Installation)
 
-**۱. کلون کردن مخزن (Clone the repository):**
-```bash
-git clone https://github.com/sobhandavarzani/job-vision-scraper-analyzer.git
-cd job-vision-scraper-analyzer
+### ۱. کلون کردن مخزن (Clone the repository):
 
+```bash
+git clone [https://github.com/sobhandavarzani/job-vision-scraper-analyzer.git](https://github.com/sobhandavarzani/job-vision-scraper-analyzer.git)
+cd job-vision-scraper-analyzer
+```
 ۲. ساخت و فعال‌سازی محیط مجازی (Virtual Environment):
 ```bash
 # ساخت محیط مجازی
