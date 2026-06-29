@@ -1,0 +1,21 @@
+# Virtual Environments
+venv/
+.venv/
+
+# ChromeDriver and Executables
+chromedriver.exe
+LICENSE.chromedriver
+THIRD_PARTY_NOTICES.chromedriver
+*.exe
+
+# Scraped Data and Outputs
+data_files/
+analysis/
+chrome/
+*.csv
+*.xlsx
+*.png
+
+# Python Cache
+__pycache__/
+*.pyc
