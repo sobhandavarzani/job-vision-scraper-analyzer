@@ -42,11 +42,10 @@
 
 **۱. کلون کردن مخزن (Clone the repository):**
 ```bash
-git clone [https://github.com/YourUsername/job-vision-scraper-analyzer.git](https://github.com/YourUsername/job-vision-scraper-analyzer.git)
+git clone https://github.com/sobhandavarzani/job-vision-scraper-analyzer.git
 cd job-vision-scraper-analyzer
 
-**۲. ساخت و فعال‌سازی محیط مجازی (Virtual Environment):**
-
+۲. ساخت و فعال‌سازی محیط مجازی (Virtual Environment):
 ```bash
 # ساخت محیط مجازی
 python -m venv .venv
