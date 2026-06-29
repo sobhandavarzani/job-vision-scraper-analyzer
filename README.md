@@ -50,12 +50,10 @@ cd job-vision-scraper-analyzer
 ```bash
 # ساخت محیط مجازی
 python -m venv .venv
-
 # فعال‌سازی در ویندوز
 .venv\Scripts\activate
 # فعال‌سازی در مک/لینوکس
 source .venv/bin/activate
-
 ```
 
 **۳. نصب کتابخانه‌های مورد نیاز:**
