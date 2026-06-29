@@ -40,7 +40,7 @@
 
 ## 🚀 راهنمای نصب و راه‌اندازی (Installation)
 
-### ۱. کلون کردن مخزن (Clone the repository):
+**۱. کلون کردن مخزن (Clone the repository):**
 
 ```bash
 git clone [https://github.com/sobhandavarzani/job-vision-scraper-analyzer.git](https://github.com/sobhandavarzani/job-vision-scraper-analyzer.git)
