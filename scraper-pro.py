@@ -11,6 +11,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from datetime import datetime
 import undetected_chromedriver as uc
+from utils import get_chromedriver_path, clean_persian_text
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
@@ -41,22 +42,19 @@ def setup_driver():
     options.add_argument('--blink-settings=imagesEnabled=false')
     options.page_load_strategy = 'eager'
     
-    # آدرس دقیق فایلی که به صورت دستی دانلود کردید
-    driver_path = r"E:\random project\jab vision scraper\chromedriver.exe"
-    
-    # معرفی مسیر درایور به کتابخانه
-    driver = uc.Chrome(
-        options=options, 
-        driver_executable_path=driver_path,
-        version_main=149
-    )
+    # معرفی مسیر درایور به کتابخانه (خودکار یا دستی)
+    driver_path = get_chromedriver_path()
+    try:
+        if driver_path:
+            driver = uc.Chrome(options=options, driver_executable_path=driver_path)
+        else:
+            driver = uc.Chrome(options=options)
+    except Exception as e:
+        logging.warning(f"ChromeDriver auto-detection failed ({e}), retrying without explicit path...")
+        driver = uc.Chrome(options=options)
     
     return driver
-def clean_persian_text(text):
-    if not text:
-        return ""
-    cleaned = re.sub(r'\s+', ' ', text)
-    return cleaned.strip()
+# clean_persian_text is imported from utils.py
 
 def is_recent_job(card_text):
     """بررسی تاریخ انتشار آگهی با پشتیبانی از زبان فارسی و انگلیسی"""

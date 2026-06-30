@@ -15,6 +15,10 @@ from datetime import datetime
 import os
 import io
 import json
+from utils import (
+    get_chromedriver_path, KEYWORDS_POOL, clean_persian_text,
+    extract_experience, extract_job_details as _extract_job_details,
+)
 
 # ==========================================
 # History System Setup
@@ -36,7 +40,7 @@ def load_history():
     try:
         with open(HISTORY_LOG_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
-    except:
+    except (json.JSONDecodeError, FileNotFoundError, IOError):
         return []
 
 def save_to_history(run_data, excel_buffer, img_buffer):
@@ -85,52 +89,7 @@ CATEGORIES_POOL = {
     "معامله‌گر / تریدر (Trader)": "https://jobvision.ir/jobs/category/trader"
 }
 
-KEYWORDS_POOL = {
-    'Python': r'\bpython\b|پایتون',
-    'C# (.NET)': r'\bc#\b|\b\.net\b|دات‌نت Core',
-    'Java': r'\bjava\b|جاوا(?!اسکریپت)',
-    'Go / Golang': r'\bgo\b|\bgolang\b|گولنگ',
-    'PHP / Laravel': r'\bphp\b|پی‌اچ‌پ|laravel|لاراول',
-    'JavaScript': r'\bjavascript\b|جاوااسکریپت|\bjs\b',
-    'TypeScript': r'\btypescript\b|تایپ‌اسکریپت|\bts\b',
-    'LLM / AI / GPT': r'\bllm\b|\bai\b|هوش مصنوعی|openai|chatgpt|gemini',
-    'Claude / Anthropic': r'\bclaude\b|کلود',
-    'Vibe Coding / Prompt Engineering': r'vibe\s?coder|وایب کدینگ|prompt\s?engineering|مهندسی پرامپت',
-    'AI Coding Tools': r'cursor|copilot|claudecode|v0\.dev|lovable|bolt\.new',
-    'LangChain / LangGraph': r'langchain|langgraph|crewai|ایجنت',
-    'RAG / Vector Databases': r'\brag\b|vector\s?database|qdrant|chromadb',
-    'Machine / Deep Learning': r'machine\s?learning|deep\s?learning|یادگیری ماشین|pytorch|tensorflow|scikit',
-    'Computer Vision': r'computer\s?vision|opencv|بینایی ماشین|پردازش تصویر',
-    'React / Next.js': r'react|ری‌اکت|next\.js|نکست',
-    'Angular': r'angular|انگولار',
-    'Vue.js': r'vue\.js|ویو جی اس',
-    'Flutter / Dart': r'flutter|فلاتر|\bdart\b',
-    'WordPress': r'wordpress|وردپرس',
-    'SQL Server / T-SQL': r'sql\s?server|t-sql|اس‌کیو‌ال سرور',
-    'PostgreSQL / MySQL': r'postgresql|postgres|mysql|پستگرس',
-    'NoSQL (MongoDB/Redis)': r'mongodb|redis|مونگو|ردیس',
-    'Big Data (Spark/Kafka)': r'spark|kafka|hadoop|کافکا|اسپارک',
-    'Docker / Kubernetes': r'docker|kubernetes|داکر|کوبرنتیز',
-    'Microservices / MQ': r'microservice|میکروسرویس|rabbitmq|message\s?queue|صف پیام',
-    'Clean Code / SOLID': r'clean\s?code|solid|ddd|کد تمیز|معماری تمیز',
-    'Power BI / BI': r'power\s?bi|هوش تجاری|\bbi\b|dashboards',
-    'BPMS / BPMN': r'bpms|bpmn|مدل‌سازی فرآیند',
-    'FinTech / Blockchain / ERP': r'fintech|فین‌تک|blockchain|بلاکچین|رمز\s?ارز|crypto|erp|ای‌آرپی',
-    'Git / GitLab / GitHub': r'\bgit\b|gitlab|github|گیت',
-    'Jira / Scrum / Agile': r'\bjira\b|جیرا|scrum|اسکرام|agile|اجایل',
-    'HTML / CSS': r'\bhtml\b|\bcss\b',
-    'RESTful API': r'\brest\b|\bapi\b|restful',
-    'Node.js': r'node\.js|node js|نود جی اس',
-    'Django': r'django|جانگو|جنگو',
-    'ASP.NET / Entity Framework': r'asp\.net|entity framework|ef core',
-    'C++': r'\bc\+\+\b|سی پلاس پلاس',
-    'Linux': r'\blinux\b|لینوکس',
-    'DevOps / CI/CD': r'devops|دوآپس|ci/cd|azure|tfs',
-    'Elasticsearch': r'elastic\s?search|الاستیک',
-    'Oracle': r'oracle|اوراکل',
-    'Figma / Adobe': r'figma|فیگما|adobe|فتوشاپ|photoshop',
-    'Microsoft Office (Excel/Word)': r'excel|اکسل|word|پاورپوینت|powerpoint'
-}
+# KEYWORDS_POOL is imported from utils.py
 
 MAX_PAGES = 40 
 MAX_RETRIES = 3
@@ -149,31 +108,35 @@ def setup_driver():
     options.add_argument('--blink-settings=imagesEnabled=false')
     options.page_load_strategy = 'eager'
     
-    driver_path = r"E:\random project\jab vision scraper\chromedriver.exe"
+    driver_path = get_chromedriver_path()
     try:
-        driver = uc.Chrome(options=options, driver_executable_path=driver_path, version_main=149)
-    except:
+        if driver_path:
+            driver = uc.Chrome(options=options, driver_executable_path=driver_path)
+        else:
+            driver = uc.Chrome(options=options)
+    except Exception as e:
+        st.warning(f"ChromeDriver auto-detection failed ({e}), retrying without explicit path...")
         driver = uc.Chrome(options=options)
     return driver
 
-def clean_persian_text(text):
-    if not text: return ""
-    return re.sub(r'\s+', ' ', text).strip()
-
-def safe_get(driver, url):
+def safe_get_page(driver, url):
+    """Navigate to URL and return parsed BeautifulSoup, with retries."""
     for attempt in range(MAX_RETRIES):
         try:
             time.sleep(random.uniform(2.0, 3.5))
             driver.get(url)
             time.sleep(3.0)
             return BeautifulSoup(driver.page_source, 'html.parser')
-        except:
+        except (WebDriverException, TimeoutException) as e:
+            st.warning(f"Attempt {attempt+1}/{MAX_RETRIES} failed for {url}: {e}")
             time.sleep(2)
     return None
 
-def extract_job_details(driver, job_url):
-    soup = safe_get(driver, job_url)
-    if not soup: return None
+def scrape_job_details(driver, job_url):
+    """Scrape a single job posting page and extract structured data."""
+    soup = safe_get_page(driver, job_url)
+    if not soup:
+        return None
     try:
         title_element = soup.find('h1')
         title = clean_persian_text(title_element.get_text()) if title_element else "N/A"
@@ -189,7 +152,8 @@ def extract_job_details(driver, job_url):
         if desc_header:
             content_div = desc_header.find_next_sibling('div')
             if content_div:
-                for br in content_div.find_all("br"): br.replace_with(" | ") 
+                for br in content_div.find_all("br"):
+                    br.replace_with(" | ") 
                 description = clean_persian_text(content_div.get_text())
         key_indicators = "N/A"
         key_header = soup.find(lambda tag: tag.name in ["h2", "h3", "h4"] and any(k in tag.text.lower() for k in ["شاخص های کلیدی", "key indicators"]))
@@ -199,15 +163,9 @@ def extract_job_details(driver, job_url):
                 texts = [clean_persian_text(text) for text in content_container.stripped_strings if text]
                 key_indicators = " | ".join(texts)
         return {'title': title, 'city': city, 'description_and_responsibilities': description, 'key_indicators': key_indicators, 'url': job_url}
-    except:
+    except Exception as e:
+        st.warning(f"Error extracting job details from {job_url}: {e}")
         return None
-
-def extract_experience(text):
-    match = re.search(r'(\d+)\s*سال\s*(?:سابقه|تجربه)|experience\s*:?\s*(\d+)', text, re.IGNORECASE)
-    if match:
-        nums = [int(s) for s in match.groups() if s is not None]
-        return nums[0] if nums else None
-    return None
 
 def analyze_data(df, selected_skills=None):
     text_cols = ['title', 'description_and_responsibilities', 'key_indicators']
@@ -339,7 +297,7 @@ if start_btn:
                     
                     for page in range(1, MAX_PAGES + 1):
                         page_url = f"{cat_url}?page={page}&sort=1{time_param}"
-                        soup = safe_get(driver, page_url)
+                        soup = safe_get_page(driver, page_url)
                         if not soup: break
                         
                         total_links_on_page = 0
@@ -361,7 +319,7 @@ if start_btn:
                     progress_bar = st.progress(0)
                     for idx, url in enumerate(all_job_links):
                         progress_text.text(f"Extracting job {idx+1} of {total_links}...")
-                        job_data = extract_job_details(driver, url)
+                        job_data = scrape_job_details(driver, url)
                         if job_data and job_data['title'] != "N/A":
                             scraped_data.append(job_data)
                         progress_bar.progress((idx + 1) / total_links)
