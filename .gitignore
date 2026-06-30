@@ -9,6 +9,7 @@ THIRD_PARTY_NOTICES.chromedriver
 *.exe
 
 # Scraped Data and Outputs
+history/
 data_files/
 analysis/
 chrome/

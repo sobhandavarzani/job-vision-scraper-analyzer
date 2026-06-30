@@ -14,6 +14,57 @@ import re
 from datetime import datetime
 import os
 import io
+import json
+
+# ==========================================
+# History System Setup
+# ==========================================
+HISTORY_DIR = "history"
+HISTORY_FILES_DIR = os.path.join(HISTORY_DIR, "files")
+HISTORY_LOG_FILE = os.path.join(HISTORY_DIR, "history_log.json")
+
+def init_history():
+    if not os.path.exists(HISTORY_FILES_DIR):
+        os.makedirs(HISTORY_FILES_DIR)
+    if not os.path.exists(HISTORY_LOG_FILE):
+        with open(HISTORY_LOG_FILE, 'w', encoding='utf-8') as f:
+            json.dump([], f)
+
+def load_history():
+    if not os.path.exists(HISTORY_LOG_FILE):
+        return []
+    try:
+        with open(HISTORY_LOG_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except:
+        return []
+
+def save_to_history(run_data, excel_buffer, img_buffer):
+    init_history()
+    history = load_history()
+    history.append(run_data)
+    
+    # Save log file
+    try:
+        with open(HISTORY_LOG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(history, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        st.error(f"Error saving history log file: {e}")
+        return
+
+    # Save Excel file physically
+    try:
+        with open(run_data["excel_path"], "wb") as f:
+            f.write(excel_buffer.getbuffer())
+    except Exception as e:
+        st.error(f"Error saving Excel file physically: {e}")
+
+    # Save Image physically
+    try:
+        with open(run_data["image_path"], "wb") as f:
+            f.write(img_buffer.getbuffer())
+    except Exception as e:
+        st.error(f"Error saving image physically: {e}")
 
 # ==========================================
 # Settings & Globals
@@ -81,11 +132,11 @@ KEYWORDS_POOL = {
     'Microsoft Office (Excel/Word)': r'excel|اکسل|word|پاورپوینت|powerpoint'
 }
 
-MAX_PAGES = 10
+MAX_PAGES = 40 
 MAX_RETRIES = 3
 
 # ==========================================
-# Scraper Logic
+# Scraper & Analyzer Logic
 # ==========================================
 
 def setup_driver():
@@ -99,7 +150,6 @@ def setup_driver():
     options.page_load_strategy = 'eager'
     
     driver_path = r"E:\random project\jab vision scraper\chromedriver.exe"
-    
     try:
         driver = uc.Chrome(options=options, driver_executable_path=driver_path, version_main=149)
     except:
@@ -110,31 +160,12 @@ def clean_persian_text(text):
     if not text: return ""
     return re.sub(r'\s+', ' ', text).strip()
 
-def is_recent_job(card_text, max_days):
-    if not card_text: return True
-    text = card_text.translate(str.maketrans('۰۱۲۳۴۵۶۷۸۹', '0123456789')).lower()
-    
-    job_age_days = 999
-    if any(k in text for k in ["امروز", "لحظه", "ساعت", "دقیقه", "today", "hour", "minute", "just now"]):
-        job_age_days = 0
-    elif any(k in text for k in ["دیروز", "yesterday"]):
-        job_age_days = 1
-    else:
-        day_match = re.search(r'(\d+)\s*(?:روز\s*پیش|days?\s*ago)', text)
-        if day_match: job_age_days = int(day_match.group(1))
-        week_match = re.search(r'(\d+)\s*(?:هفته\s*پیش|weeks?\s*ago)', text)
-        if week_match: job_age_days = int(week_match.group(1)) * 7
-        month_match = re.search(r'(\d+)\s*(?:ماه\s*پیش|months?\s*ago)', text)
-        if month_match: job_age_days = int(month_match.group(1)) * 30
-
-    return job_age_days <= max_days
-
 def safe_get(driver, url):
     for attempt in range(MAX_RETRIES):
         try:
-            time.sleep(random.uniform(1.0, 2.0))
+            time.sleep(random.uniform(2.0, 3.5))
             driver.get(url)
-            time.sleep(1.5)
+            time.sleep(3.0)
             return BeautifulSoup(driver.page_source, 'html.parser')
         except:
             time.sleep(2)
@@ -170,10 +201,6 @@ def extract_job_details(driver, job_url):
         return {'title': title, 'city': city, 'description_and_responsibilities': description, 'key_indicators': key_indicators, 'url': job_url}
     except:
         return None
-
-# ==========================================
-# Analyzer Logic
-# ==========================================
 
 def extract_experience(text):
     match = re.search(r'(\d+)\s*سال\s*(?:سابقه|تجربه)|experience\s*:?\s*(\d+)', text, re.IGNORECASE)
@@ -213,43 +240,89 @@ def analyze_data(df, selected_skills=None):
     return skills_results, modes, avg_exp, total_jobs, df
 
 # ==========================================
-# Streamlit UI
+# Streamlit UI Initialization
 # ==========================================
-
 st.set_page_config(page_title="Smart Job Market Dashboard", layout="wide", page_icon="📊")
+
+init_history() 
 
 if 'scraped_data' not in st.session_state:
     st.session_state['scraped_data'] = None
+if 'is_new_run' not in st.session_state:
+    st.session_state['is_new_run'] = False
+if 'selected_history_run' not in st.session_state:
+    st.session_state['selected_history_run'] = None
 
 st.title("📊 Integrated Job Posting Scraper & Analyzer")
 st.markdown("This system scrapes JobVision postings in real-time and analyzes them using AI.")
 
+# --- Improved Sidebar Layout ---
 st.sidebar.header("⚙️ Settings & Filters Panel")
 
-selected_category_names = st.sidebar.multiselect(
-    "1. Select Job Category (Required):",
-    options=list(CATEGORIES_POOL.keys()),
-    default=["توسعه‌دهنده (Developer)"]
-)
+with st.sidebar.container():
+    st.markdown("### 📂 Categories")
+    selected_category_names = st.multiselect(
+        "Select Job Category (Required):",
+        options=list(CATEGORIES_POOL.keys()),
+        default=["توسعه‌دهنده (Developer)"]
+    )
 
-time_options = {"Today": 0, "Last 2 Days": 2, "Last Week": 7, "Last Month": 30}
-selected_time_name = st.sidebar.radio(
-    "2. Job Posting Timeframe:",
-    options=list(time_options.keys()),
-    index=2 
-)
-max_days = time_options[selected_time_name]
+st.sidebar.markdown("---")
 
-selected_skills = st.sidebar.multiselect(
-    "3. Filter by Specific Skills (Optional):",
-    options=list(KEYWORDS_POOL.keys()),
-    help="If left empty, all ads will be extracted and all skills analyzed."
-)
+with st.sidebar.container():
+    st.markdown("### 📅 Timeframe")
+    
+    time_options = {
+        "3 Days": "&searchTimeRange=1",
+        "1 Week": "&searchTimeRange=2",
+        "15 Days": "&searchTimeRange=3",
+        "1 Month": "&searchTimeRange=4",
+        "All Ads": "" 
+    }
+    selected_time_name = st.radio(
+        "Select Job Posting Timeframe:",
+        options=list(time_options.keys()),
+        index=1 
+    )
+    time_param = time_options[selected_time_name]
 
+st.sidebar.markdown("---")
+
+with st.sidebar.container():
+    st.markdown("### 🛠️ Skills")
+    selected_skills = st.multiselect(
+        "Filter by Specific Skills (Optional):",
+        options=list(KEYWORDS_POOL.keys()),
+        help="If left empty, all ads will be extracted."
+    )
+
+st.sidebar.markdown("---")
 start_btn = st.sidebar.button("🚀 Start Scraping & Analysis", use_container_width=True, type="primary")
+
+# --- History Panel in Sidebar ---
+st.sidebar.markdown("---")
+st.sidebar.header("🗂️ Run History")
+history_records = load_history()
+
+if not history_records:
+    st.sidebar.info("No history found.")
+else:
+    for i, run in enumerate(history_records):
+        cat_clean = run.get('categories', 'Unknown').replace('(', '').replace(')', '')
+        expander_title = f"{cat_clean} - {run.get('timeframe', 'Unknown')}"
+        
+        with st.sidebar.expander(expander_title):
+            st.caption(f"🕒 Scrape Time: {run.get('timestamp')}")
+            st.caption(f"📊 Total Ads: {run.get('total_ads')}")
+            
+            if st.button("👁️ View in Main Panel", key=f"btn_hist_{i}_{run.get('id', i)}"):
+                st.session_state['selected_history_run'] = run
+                st.rerun() 
 
 # --- App Logic ---
 if start_btn:
+    st.session_state['selected_history_run'] = None
+    
     if not selected_category_names:
         st.error("Error: Please select at least one job category.")
     else:
@@ -263,23 +336,22 @@ if start_btn:
                 for cat_name in selected_category_names:
                     cat_url = CATEGORIES_POOL[cat_name]
                     progress_text.info(f"Searching in category: {cat_name} ...")
+                    
                     for page in range(1, MAX_PAGES + 1):
-                        page_url = f"{cat_url}?page={page}"
+                        page_url = f"{cat_url}?page={page}&sort=1{time_param}"
                         soup = safe_get(driver, page_url)
                         if not soup: break
-                        found_links_on_page = 0
+                        
+                        total_links_on_page = 0
+                        
                         for a_tag in soup.find_all('a', href=True):
                             href = a_tag['href']
                             if '/jobs/' in href and '/category/' not in href and '/keyword/' not in href:
-                                parent = a_tag
-                                for _ in range(5):
-                                    if parent.parent: parent = parent.parent
-                                card_text = parent.get_text()
-                                if is_recent_job(card_text, max_days):
-                                    full_url = f"https://jobvision.ir{href}" if not href.startswith('http') else href
-                                    all_job_links.add(full_url)
-                                    found_links_on_page += 1
-                        if found_links_on_page == 0:
+                                total_links_on_page += 1
+                                full_url = f"https://jobvision.ir{href}" if not href.startswith('http') else href
+                                all_job_links.add(full_url)
+                                
+                        if total_links_on_page == 0:
                             break 
                 
                 total_links = len(all_job_links)
@@ -296,50 +368,64 @@ if start_btn:
                     
                     progress_text.success(f"Scraping completed successfully. Found {len(scraped_data)} valid jobs.")
                     st.session_state['scraped_data'] = scraped_data
+                    st.session_state['is_new_run'] = True 
             finally:
                 driver.quit()
 
-# --- نمایش داشبورد ---
-if st.session_state['scraped_data']:
+# ==========================================
+# Main Dashboard Rendering
+# ==========================================
+
+if st.session_state.get('selected_history_run'):
+    run = st.session_state['selected_history_run']
+    
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.subheader(f"🕰️ History View: {run.get('categories', '')} - {run.get('timeframe', '')}")
+    with col2:
+        if st.button("❌ Close History", use_container_width=True):
+            st.session_state['selected_history_run'] = None
+            st.rerun()
+            
+    st.markdown(f"**Scraped at:** {run.get('timestamp')} | **Total Ads:** {run.get('total_ads')}")
+    st.markdown("---")
+    
+    col_chart, col_data = st.columns([2, 1])
+    with col_chart:
+        st.write("**Skills Demand Chart**")
+        if os.path.exists(run.get('image_path', '')):
+            st.image(run['image_path'], use_container_width=True)
+        else:
+            st.warning("Chart image not found.")
+            
+    with col_data:
+        if 'modes_data' in run:
+            st.write("**Collaboration Type Details**")
+            st.dataframe(pd.DataFrame(run['modes_data'], columns=["Type", "Count"]), use_container_width=True)
+            
+        if 'raw_preview' in run:
+            st.write("**Extracted Data (Sample)**")
+            st.dataframe(pd.DataFrame(run['raw_preview']), use_container_width=True)
+
+elif st.session_state.get('scraped_data'):
     df = pd.DataFrame(st.session_state['scraped_data'])
     
     with st.spinner('Processing and analyzing data...'):
         skills_res, modes_res, avg_exp, total_ads, filtered_df = analyze_data(df, selected_skills)
     
-    # ---------------------------------------------------------
-    # 🎯 تولید نام فایل پویا بر اساس تنظیمات کاربر
-    # ---------------------------------------------------------
-    
-    # ۱. استخراج نام‌های انگلیسی دسته‌بندی‌ها
-    eng_cats = []
-    for cat in selected_category_names:
-        match = re.search(r'\((.*?)\)', cat)
-        if match:
-            eng_cats.append(match.group(1).strip())
-        else:
-            eng_cats.append(cat)
+    eng_cats = [re.search(r'\((.*?)\)', cat).group(1).strip() if re.search(r'\((.*?)\)', cat) else cat for cat in selected_category_names]
     cats_str = "(" + " - ".join(eng_cats) + ")"
+    cats_str = re.sub(r'[\\/*?:"<>|]', '_', cats_str)
     
-    # ۲. نگاشت نام بازه زمانی به مخفف‌ها
-    time_abbr_map = {"Today": "1D", "Last 2 Days": "2D", "Last Week": "W", "Last Month": "M"}
+    time_abbr_map = {"3 Days": "3D", "1 Week": "1W", "15 Days": "15D", "1 Month": "1M", "All Ads": "ALL"}
     time_str = time_abbr_map.get(selected_time_name, "Unknown")
     
-    # ۳. فیلتر مهارت‌ها (حذف کاراکترهای غیرمجاز در ویندوز)
-    if selected_skills:
-        safe_skills = [re.sub(r'[\\/*?:"<>|]', '', s).strip() for s in selected_skills]
-        skills_str = "_".join(safe_skills)
-        if len(skills_str) > 80: # جلوگیری از ارور طولانی شدن اسم فایل
-            skills_str = skills_str[:80] + "..."
-    else:
-        skills_str = "AllSkills"
-        
-    # ۴. تاریخ امروز
+    skills_str = "_".join([re.sub(r'[\\/*?:"<>|]', '', s).strip() for s in selected_skills])[:80] if selected_skills else "AllSkills"
     date_str = datetime.now().strftime('%Y-%m-%d')
-    
-    # ۵. نام نهایی پایه برای هر دو فایل
     dynamic_filename_base = f"{cats_str}_{time_str}_{skills_str}_{date_str}"
-    # ---------------------------------------------------------
-
+    
+    run_id = datetime.now().strftime("%H%M%S")
+    
     if total_ads == 0:
         st.warning("The found job postings did not contain your selected skills.")
     else:
@@ -355,6 +441,8 @@ if st.session_state['scraped_data']:
         st.markdown("---")
         col_chart, col_data = st.columns([2, 1])
 
+        # Generate photos for automatic saving
+        img_buffer = io.BytesIO()
         with col_chart:
             st.write("**Skills Demand Chart**")
             skills_df = pd.DataFrame(list(skills_res.items()), columns=['Skill', 'Count']).sort_values(by='Count', ascending=False)
@@ -371,20 +459,13 @@ if st.session_state['scraped_data']:
                     ax.text(width + 0.5, p.get_y() + p.get_height()/2 + 0.1, f'{width:.1f}%', ha="left", va="center", fontsize=9)
                 
                 st.pyplot(fig)
-                
-                img_buffer = io.BytesIO()
                 fig.savefig(img_buffer, format="png", bbox_inches="tight", dpi=300)
                 img_buffer.seek(0)
-                st.download_button(
-                    label="🖼️ Download Chart Image (PNG)",
-                    data=img_buffer,
-                    file_name=f"{dynamic_filename_base}.png",
-                    mime="image/png",
-                    use_container_width=True
-                )
             else:
                 st.info("None of the listed skills were found in these ads.")
 
+        # Generate Excel for auto-saving
+        excel_buffer = io.BytesIO()
         with col_data:
             st.write("**Collaboration Type Details**")
             modes_df = pd.DataFrame(list(modes_res.items()), columns=["Collaboration Type", "Count"])
@@ -393,18 +474,34 @@ if st.session_state['scraped_data']:
             st.write("**Extracted Data (Raw)**")
             st.dataframe(filtered_df[['title', 'city', 'url']].head(10), use_container_width=True)
 
-        excel_buffer = io.BytesIO()
-        export_df = filtered_df.drop(columns=['combined_text', 'combined_text_lower', 'extracted_exp'], errors='ignore')
-
-        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-            export_df.to_excel(writer, sheet_name="Scraped Jobs", index=False)
-            modes_df.to_excel(writer, sheet_name="Collaboration Modes", index=False)
+            export_df = filtered_df.drop(columns=['combined_text', 'combined_text_lower', 'extracted_exp'], errors='ignore')
+            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                export_df.to_excel(writer, sheet_name="Scraped Jobs", index=False)
+                modes_df.to_excel(writer, sheet_name="Collaboration Modes", index=False)
+            excel_buffer.seek(0)
             
-        excel_buffer.seek(0)
+        # Auto-save to history and display message
+        if st.session_state['is_new_run']:
+            excel_filename = f"{dynamic_filename_base}_{run_id}.xlsx"
+            image_filename = f"{dynamic_filename_base}_{run_id}.png"
+            
+            excel_absolute_path = os.path.join(HISTORY_FILES_DIR, excel_filename)
+            image_absolute_path = os.path.join(HISTORY_FILES_DIR, image_filename)
 
-        st.download_button(
-            label="📥 Download Data (Excel - Multiple Sheets)",
-            data=excel_buffer,
-            file_name=f"{dynamic_filename_base}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+            run_metadata = {
+                "id": f"{date_str}_{run_id}",
+                "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "categories": cats_str,
+                "timeframe": selected_time_name, 
+                "skills_filter": skills_str,
+                "total_ads": int(total_ads),  
+                "excel_path": excel_absolute_path,
+                "image_path": image_absolute_path,
+                "modes_data": [(k, int(v)) for k, v in modes_res.items()],
+                "raw_preview": filtered_df[['title', 'city', 'url']].head(10).fillna("N/A").to_dict('records')
+            }
+            
+            save_to_history(run_metadata, excel_buffer, img_buffer)
+            st.session_state['is_new_run'] = False
+            
+            st.success(f"✅ Scraping finished successfully! Results have been automatically saved to: `{HISTORY_FILES_DIR}`")
