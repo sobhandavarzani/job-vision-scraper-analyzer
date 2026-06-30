@@ -43,7 +43,7 @@
 
 **۱. کلون کردن مخزن (Clone the repository):**
 ```bash
-git clone [https://github.com/sobhandavarzani/job-vision-scraper-analyzer.git](https://github.com/sobhandavarzani/job-vision-scraper-analyzer.git)
+git clone https://github.com/sobhandavarzani/job-vision-scraper-analyzer.git
 cd job-vision-scraper-analyzer
 
 ```
